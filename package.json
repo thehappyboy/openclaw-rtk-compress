@@ -1,0 +1,11 @@
+{
+  "name": "@openclaw/rtk-compress",
+  "version": "1.0.0",
+  "description": "RTK token compression plugin for OpenClaw",
+  "main": "index.ts",
+  "type": "module",
+  "dependencies": {},
+  "devDependencies": {
+    "openclaw": "*"
+  }
+}
