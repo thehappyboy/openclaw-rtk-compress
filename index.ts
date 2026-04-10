@@ -1,4 +1,5 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { accessSync, constants as fsConstants } from "node:fs";
 
 /**
  * RTK Token Compressor Plugin
@@ -68,21 +69,59 @@ function shouldRewrite(command: string) {
 
 function rewriteCommand(command: string) {
   const trimmed = command.trim();
-  return `rtk ${trimmed}`;
+  return `${rtkCommand} ${trimmed}`;
 }
 
 let rtkAvailable: boolean | null | undefined = null;
+let rtkCommand = "rtk";
+
+function getRtkCandidates() {
+  const home = process.env.HOME ?? "/home/mark";
+  const fromEnv = process.env.RTK_BIN?.trim();
+  const candidates = [
+    fromEnv,
+    "rtk",
+    `${home}/.local/bin/rtk`,
+    "/usr/local/bin/rtk",
+    "/usr/bin/rtk",
+  ].filter((s): s is string => Boolean(s));
+  return Array.from(new Set(candidates));
+}
+
+function canExecute(path: string) {
+  if (path === "rtk") return true;
+  try {
+    accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function checkRtkAvailable() {
   if (rtkAvailable !== null) {
     return rtkAvailable;
   }
-  try {
-    execSync("rtk --version", { timeout: 3000, stdio: "pipe" });
-    rtkAvailable = true;
-  } catch {
-    rtkAvailable = false;
+  for (const candidate of getRtkCandidates()) {
+    if (!canExecute(candidate)) continue;
+    try {
+      execFileSync(candidate, ["--version"], { timeout: 3000, stdio: "pipe" });
+      rtkCommand = candidate;
+      rtkAvailable = true;
+      return true;
+    } catch (error: any) {
+      // Some runtime sandboxes deny child-process execution with EPERM/EACCES.
+      // In that case, keep plugin enabled if the binary path exists and is executable.
+      const code = error?.code;
+      if ((code === "EPERM" || code === "EACCES") && candidate !== "rtk") {
+        rtkCommand = candidate;
+        rtkAvailable = true;
+        return true;
+      }
+      // try next candidate
+    }
   }
+  rtkAvailable = false;
   return rtkAvailable;
 }
 
@@ -97,7 +136,7 @@ const plugin = {
       return;
     }
 
-    api.logger.info("rtk-compress: enabled (rtk found)");
+    api.logger.info(`rtk-compress: enabled (rtk found at ${rtkCommand})`);
 
     // Rewrite exec commands to use rtk prefix
     api.on("before_tool_call", async (event) => {
