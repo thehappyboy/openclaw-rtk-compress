@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
+import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 /**
  * RTK Token Compressor Plugin
@@ -15,22 +16,50 @@ import { accessSync, constants as fsConstants } from "node:fs";
  */
 
 // Commands that RTK can compress effectively
+// Only include commands that rtk has built-in compressors for
 const RTK_REWRITABLE_PREFIXES = [
+  // Git & Version Control
   "git ",
   "git\t",
+  "git\n",
+  "gh ",
+  
+  // File Operations (rtk has native compressors)
   "ls ",
   "ls\t",
   "ls\n",
   "find ",
+  "tree ",
+  
+  // Text Search
   "grep ",
+  
+  // File Read
+  "read ",
   "cat ",
+  
+  // Diffs
   "diff ",
-  "gh ",
+  
+  // Package Managers (rtk supported)
   "pnpm ",
-  "npm ",
-  "cargo ",
-  "pytest ",
+  "dotnet ",
+  
+  // Containers & Cloud
   "docker ",
+  "kubectl ",
+  "aws ",
+  
+  // Database
+  "psql ",
+  
+  // Other utilities
+  "json ",
+  "deps ",
+  "env ",
+  "log ",
+  "wc ",
+  "wget ",
 ];
 
 // Commands to NOT rewrite (interactive, piped, or already using rtk)
@@ -125,14 +154,16 @@ function checkRtkAvailable() {
   return rtkAvailable;
 }
 
-const plugin = {
+export default definePluginEntry({
   id: "rtk-compress",
   name: "RTK Token Compressor",
   description: "Compresses exec tool outputs using RTK to reduce token consumption.",
 
-  register(api: any) {
+  register(api) {
+    api.logger.info("rtk-compress: plugin registering...");
+    
     if (!checkRtkAvailable()) {
-      api.logger.warn("rtk-compress: rtk binary not found, plugin disabled");
+      api.logger.warn("rtk-compress: rtk binary not found, plugin will be disabled");
       return;
     }
 
@@ -140,18 +171,28 @@ const plugin = {
 
     // Rewrite exec commands to use rtk prefix
     api.on("before_tool_call", async (event) => {
+      api.logger.debug(`rtk-compress: before_tool_call triggered, toolName=${event.toolName}`);
+      
       if (event.toolName !== "exec") {
         return;
       }
 
-      const command = (event.params as { command?: string }).command;
+      // Try multiple possible param structures
+      const command = 
+        (event.params as any)?.command ||
+        (event.params as any)?.args?.command ||
+        (event as any)?.command;
+      
       if (!command || typeof command !== "string") {
+        api.logger.debug(`rtk-compress: no command found in params, skipping`);
         return;
       }
 
+      api.logger.debug(`rtk-compress: original command=${command.slice(0, 50)}`);
+
       if (shouldRewrite(command)) {
         const rewritten = rewriteCommand(command);
-        api.logger.debug(`rtk-compress: ${command.slice(0, 40)} → ${rewritten.slice(0, 40)}`);
+        api.logger.info(`rtk-compress: ${command.slice(0, 40)} → ${rewritten.slice(0, 40)}`);
         return {
           params: { ...event.params, command: rewritten },
         };
@@ -160,6 +201,4 @@ const plugin = {
       return;
     });
   },
-};
-
-export default plugin;
+});
