@@ -93,7 +93,13 @@ curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/instal
 # 克隆到 OpenClaw extensions 目录
 git clone https://github.com/thehappyboy/openclaw-rtk-compress.git ~/.openclaw/extensions/rtk-compress
 
-# 重启 Gateway（plugin 会自动加载）
+# 添加到 plugin allowlist（如果不设置，可能无法加载）
+openclaw config set plugins.allow '["rtk-compress"]' --merge
+
+# 启用 plugin
+openclaw config set plugins.entries.rtk-compress.enabled true
+
+# 重启 Gateway
 openclaw gateway restart
 ```
 
